@@ -1,0 +1,30 @@
+cargo-features = ["per-package-target"]
+
+[package]
+name                 = "eapp"
+version.workspace    = true
+edition.workspace    = true
+authors.workspace    = true
+repository.workspace = true
+readme.workspace     = true
+license.workspace    = true
+description          = """
+A library for enclave application development
+"""
+forced-target           = "riscv64gc-unknown-none-elf"
+
+[dependencies]
+buddy_system_allocator = "0.8"
+spin = {version = "0.9.3" }
+
+[dependencies.eapp-macros]
+path = "./macros"
+
+[dependencies.edge]
+path = "../libedge"
+
+[features]
+default      = ["heap", "heap_rt"]
+heap         = []       # Application has heap available
+heap_rt      = ["heap"] # Runtime has heap available
+debug_memory = ["heap", "edge/debug_memory"]

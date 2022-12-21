@@ -1,0 +1,44 @@
+cargo-features = ["per-package-target"]
+
+[package]
+name                 = "happ"
+version.workspace    = true
+edition.workspace    = true
+authors.workspace    = true
+repository.workspace = true
+readme.workspace     = true
+license.workspace    = true
+description          = """
+A library for host applications development
+"""
+default-target          = "riscv64gc-unknown-linux-gnu"
+
+[dependencies]
+rand             = "0.8.5"
+curve25519-dalek = "3.2.1"
+sha3             = "0.9.1"
+nix              = "0.24.1"
+elf_rs           = "0.2.0"
+libc             = "0.2.126"
+
+[dependencies.edge]
+path = "../libedge"
+
+[build-dependencies]
+
+[features]
+default        = []
+debug_memory   = ["edge/debug_memory"]
+
+# Enabling this feature will make the ecall emulation return immediately to the
+# enclave, if there are no pending ecalls when the enclave polls for ecalls.
+# The default feature is to block until the next ecall is made. This feature is
+# mutually exclusive with the feature 'ecall_timeout'
+ecall_busywait = []
+
+# Enabling this feature will make the ecall emulation wait for at most
+# 'ECALL_POLL_MAX_WAIT_MS' milliseconds before returning to the enclave, if
+# there are no pending ecalls when the enclave polls for ecalls.
+# The default feature is to block until the next ecall is made. This feature is
+# mutually exclusive with the feature 'ecall_busywait'
+ecall_timeout  = []

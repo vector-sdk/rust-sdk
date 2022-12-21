@@ -1,0 +1,18 @@
+[package]
+name                 = "eapp-macros"
+version.workspace    = true
+edition.workspace    = true
+authors.workspace    = true
+repository.workspace = true
+readme.workspace     = true
+license.workspace    = true
+description          = """
+A macro for defining enclave application entry points
+"""
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn   = { version = "1.0.86", features = ["full", "extra-traits"] }
+quote = "1.0.15"

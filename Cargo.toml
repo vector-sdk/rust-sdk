@@ -1,0 +1,26 @@
+cargo-features = ["per-package-target"]
+
+[workspace]
+members = [
+  "libedge",
+  "libeapp",
+  "libhapp",
+]
+
+[workspace.package]
+version      = "0.2.0"
+edition      = "2021"
+authors      = ["Jukka Julku <jukka.julku@vtt.fi>",
+                "Markku Kylänpää <markku.kylanpaa@vtt.fi>"]
+repository   = "https://github.com/vector-sdk/rust-sdk"
+readme       = "README.md"
+license      = "MIT"
+description  = "Rust SDK for Keystone Enclaves"
+
+[profile.dev]
+opt-level = 1
+debug = false
+
+[profile.release]
+opt-level = 1
+debug = false
