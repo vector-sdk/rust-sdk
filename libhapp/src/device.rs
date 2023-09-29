@@ -279,7 +279,7 @@ impl Device {
                      MapFlags::MAP_SHARED,
                      self.device_file.as_ref().unwrap().as_raw_fd(),
                      addr as off_t) } {
-                return Ok(ptr.to_bits());
+                return Ok(ptr.expose_addr());
         }
 
         return Err(Error::Device);

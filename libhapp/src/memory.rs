@@ -104,7 +104,7 @@ impl MemoryArea {
     }
 
     fn base_addr(&self) -> uintptr {
-        self.base.to_bits()
+        self.base.expose_addr()
     }
 
     fn size(&self) -> usize {
@@ -112,7 +112,9 @@ impl MemoryArea {
     }
 
     fn top(&self) -> uintptr {
-        unsafe { self.base.add(self.base_offset + self.free_offset).to_bits() }
+        unsafe {
+	    self.base.add(self.base_offset + self.free_offset).expose_addr()
+	}
     }
 
     fn alloc_page(&mut self) -> Result<Page, Error> {
@@ -207,7 +209,7 @@ impl <'a>Page<'a>  {
     }
 
     fn base_addr(&self) -> uintptr {
-        self.content.as_ptr().to_bits()
+        self.content.as_ptr().expose_addr()
     }
 
     pub(crate) fn write(&mut self,
@@ -278,7 +280,7 @@ impl <'a>Memory<'a> {
             let priv_mem = MemoryArea::new(base, pm_size);
             // Allocate the root page table. Since this is the first allocation
             // it will always be at offset 0.
-            let root_page = base.to_bits();
+            let root_page = base.expose_addr();
             Ok(Self {device:   device,
                      mappings: None,
                      root_pgt: root_page,
@@ -310,7 +312,7 @@ impl <'a>Memory<'a> {
         }
 
         let offset = PageTable::index(page_addr, 0) * PageTableEntry::SIZE;
-        let addr   = pt.entries.as_ptr().to_bits() + offset;
+        let addr   = pt.entries.as_ptr().expose_addr() + offset;
         assert!(addr != 0);
         return Ok(PageTableEntry::wrap(addr));
     }

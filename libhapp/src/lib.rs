@@ -4,6 +4,7 @@
 // Copyright (C) 2022 VTT Technical Research Centre of Finland Ltd
 
 #![feature(ptr_to_from_bits)]
+#![feature(strict_provenance)]
 
 extern crate std;
 
