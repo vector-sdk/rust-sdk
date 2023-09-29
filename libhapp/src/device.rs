@@ -295,7 +295,7 @@ impl Drop for Device {
         }
 
         if self.device_file.is_some() {
-            drop(self.device_file.as_ref().unwrap());
+            drop(self.device_file.as_mut());
         }
     }
 }
