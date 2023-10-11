@@ -54,7 +54,7 @@ impl<'a> OCall<'a> {
         ctx.ret.size = 0;
 
         let shared = unsafe {
-            let ptr = <*mut u8>::from_bits(base);
+            let ptr = std::ptr::from_exposed_addr_mut::<u8>(base);
             let ptr = ptr.add(ctx.offset);
             std::slice::from_raw_parts_mut(ptr, size)
         };

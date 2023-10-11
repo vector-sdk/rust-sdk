@@ -141,7 +141,7 @@ impl <'a>PageTable<'a> {
 
     fn wrap(addr: uintptr) -> Self {
         let entries = unsafe {
-            let ptr = <*mut uintptr>::from_bits(addr);
+            let ptr = std::ptr::from_exposed_addr_mut::<uintptr>(addr);
             std::slice::from_raw_parts_mut(ptr, Self::SIZE)
         };
 
@@ -184,7 +184,7 @@ impl PageTableEntry {
     fn write(&mut self, value: uintptr, flags: usize) {
         let ppn = (value << PTE_PPN_SHIFT) | PTE_V | flags;
         unsafe {
-            let addr = <*mut uintptr>::from_bits(self.addr);
+            let addr = std::ptr::from_exposed_addr_mut::<uintptr>(self.addr);
             *addr = ppn;
         }
     }
@@ -201,7 +201,7 @@ impl <'a>Page<'a>  {
 
     fn wrap(vaddr: uintptr) -> Self {
         let content = unsafe {
-            let ptr = <*mut u8>::from_bits(vaddr);
+            let ptr = std::ptr::from_exposed_addr_mut::<u8>(vaddr);
             std::slice::from_raw_parts_mut(ptr, Page::SIZE)
         };
 
@@ -264,7 +264,7 @@ impl <'a>Memory<'a> {
         let pm_size = min_pages * Page::SIZE;
         return if let Some(ref dev) = device {
             let root_page = dev.map(0, Page::SIZE)?;
-            let base = <*mut u8>::from_bits(phys_addr);
+            let base = std::ptr::from_exposed_addr_mut::<u8>(phys_addr);
             Ok(Self {device:   device,
                      mappings: Some(HashMap::new()),
                      root_pgt: root_page,
@@ -352,7 +352,7 @@ impl <'a>Memory<'a> {
         if let Some(ref device) = self.device {
             let addr = device.init_shared_memory(size)?;
             self.shrd_mem.size = size;
-            self.shrd_mem.base = <*mut u8>::from_bits(addr);
+            self.shrd_mem.base = std::ptr::from_exposed_addr_mut::<u8>(addr);
             self.shrd_mem.base_offset = 0;
             self.shrd_mem.free_offset = 0;
             return Ok(addr);
