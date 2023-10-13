@@ -176,7 +176,7 @@ impl PageTableEntry {
 
     fn value(&self) -> uintptr {
         unsafe {
-            let addr = <*const uintptr>::from_bits(self.addr);
+            let addr = std::ptr::from_exposed_addr::<uintptr>(self.addr);
             return *addr;
         }
     }
