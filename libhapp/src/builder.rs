@@ -178,7 +178,7 @@ impl Builder {
         let min_pages = round_up(self.free_size, Page::BITS) / Page::SIZE
             + ceil(app_bin.total_size(), Page::SIZE)
             + ceil(ert_bin.total_size(), Page::SIZE)
-	    + ceil(ldr_bin.total_size(), Page::SIZE)
+	    + ceil(ldr_bin.text_size(), Page::SIZE)
             + 16; // A magic number inherited from Keystone code
 
         // Create memory
@@ -194,9 +194,9 @@ impl Builder {
 
 
         // Load binaries, starting from runtime
-	let _ldr_start = ldr_bin.load(&mut memory, false)?;
-        let ert_start = ert_bin.load(&mut memory, true)?;
-        let app_start = app_bin.load(&mut memory, false)?;
+	let (_ldr_start, _ldr_size) = ldr_bin.load(&mut memory, Loadable::Loader)?;
+        let (ert_start, _ert_size) = ert_bin.load(&mut memory, Loadable::Runtime)?;
+        let (app_start, _app_size) = app_bin.load(&mut memory, Loadable::Binary)?;
 
         // Allocate stack
         let high_addr = round_up(Self::DEFAULT_STACK_START, Page::BITS);

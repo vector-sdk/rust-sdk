@@ -1,7 +1,7 @@
 //! An API for handling program binaries.
 //
 // SPDX-License-Identifier: MIT
-// Copyright (C) 2022 VTT Technical Research Centre of Finland Ltd
+// Copyright (C) 2022-2025 VTT Technical Research Centre of Finland Ltd
 
 use std::fs::File;
 use std::io::Read;
@@ -12,7 +12,8 @@ use elf_rs::ProgramType;
 
 use crate::Error;
 use crate::memory::{uintptr, Memory, Page, PageMode};
-use crate::memory::{round_up, round_down, is_aligned};
+use crate::memory::{round_up, ceil, is_aligned};
+use crate::builder::Loadable;
 
 /// Executable program binary
 ///
@@ -28,6 +29,8 @@ pub(crate) struct Binary {
     entry_point: uintptr,
     /// Size of the file in bytes
     file_size:   usize,
+    /// Size of the text section in bytes
+    text_size:   usize,
 }
 
 fn file_as_buffer(filename: &String) -> Result<Box<[u8]>, Error> {
@@ -39,6 +42,11 @@ fn file_as_buffer(filename: &String) -> Result<Box<[u8]>, Error> {
     }
 
     Err(Error::NotFound) // TODO: could be access error also
+}
+
+fn is_text_section(section_name: &[u8]) -> bool {
+    const TEXT: &[u8] = b".text";
+    section_name == TEXT
 }
 
 impl Binary {
@@ -86,6 +94,9 @@ impl Binary {
         let mut mem_min: u64 = u64::MAX;
         let mut mem_max: u64 = 0;
 
+	// Get text section size
+	let mut text_section_size: usize = 0;
+
         let is_virtual = true;
         for phdr in elf.program_header_iter() {
             if phdr.memsz() == 0 {
@@ -113,6 +124,15 @@ impl Binary {
             return Err(Error::BadFormat);
         }
 
+	for section in elf.section_header_iter() {
+	    if is_text_section(&section.section_name()) {
+		text_section_size = section.content().len();
+	    }
+	}
+	if text_section_size == 0 {
+	    return Err(Error::BadFormat);
+	}
+
         // The byte buffer and the ELF structure are not saved to avoid
         // problems with the borrow checker and lifetimes
 
@@ -120,11 +140,16 @@ impl Binary {
                  min_vaddr:   mem_min as uintptr,
                  max_vaddr:   round_up(mem_max as uintptr, Page::BITS),
                  entry_point: elf.elf_header().entry_point() as uintptr,
-                 file_size:   size})
+                 file_size:   size,
+	         text_size:   text_section_size})
     }
 
     pub(crate) fn total_size(&self) -> usize {
         return self.max_vaddr - self.min_vaddr;
+    }
+
+    pub(crate) fn text_size(&self) -> usize {
+	return self.text_size;
     }
 
     pub(crate) fn entry_point(&self) -> uintptr {
@@ -133,10 +158,11 @@ impl Binary {
 
     pub(crate) fn load(&self,
                        memory: &mut Memory,
-                       runtime: bool)
-                       -> Result<uintptr, Error> {
+                       kind: Loadable)
+                       -> Result<(uintptr, usize), Error> {
 
         let bytes = file_as_buffer(&self.path)?;
+	let mut loaded: usize = 0;
         if self.file_size != bytes.len() {
             return Err(Error::BadArgument);
         }
@@ -154,87 +180,62 @@ impl Binary {
             return Err(Error::BadFormat);
         }
 
-        let total_size = self.max_vaddr - self.min_vaddr;
-        let num_pages  = round_down(total_size, Page::BITS) / Page::SIZE;
-
-        if memory.alloc_vspace(self.min_vaddr, num_pages) != num_pages {
-            return Err(Error::OutOfMemory); // TODO: could be other reasons too
-        }
-
         let start_addr = memory.current_top();
-        let mode =
-            if runtime {
-                PageMode::RuntimeFull
-            } else {
-                PageMode::UserFull
-            };
+        let mode = match kind {
+	    Loadable::Binary  => PageMode::UserFull,
+	    Loadable::Runtime => PageMode::RuntimeFull,
+	    Loadable::Loader  => PageMode::RuntimeFull,
+	};
 
-        for phdr in elf.program_header_iter() {
-            if phdr.ph_type() != ProgramType::LOAD {
-                continue;
-            }
-
-            let start       = phdr.vaddr() as uintptr;
-            let file_end    = start + phdr.filesz() as usize;
-            let memory_end  = start + phdr.memsz() as usize;
-
-            let src: &[u8]       = phdr.content();
-            let mut soffs: usize = 0;
-            let mut va           = start;
-
-            // Special case: the first page is not page aligned:
-
-            if !is_aligned(va, Page::SIZE) {
-                let offset    = va - round_down(va, Page::BITS);
-                let length    = round_up(va, Page::BITS) - va;
-                let page_addr = round_down(va, Page::BITS);
-
-                if let Some(mut page) = memory.alloc_page(page_addr, mode)? {
-                    // A new page was allocated
-                    if src.len() != 0 {
-                        page.write(offset, &src[soffs .. soffs + length], true);
-                    } else { // A hack!
-                        page.fill(0)
-                    }
-                }
-
-                va     = va + length;
-                soffs += length;
-            };
-
-            // Load the pages with initialized segments
-
-            while va + Page::SIZE <= file_end {
-                if let Some(mut page) = memory.alloc_page(va, mode)? {
-                    page.write(0, &src[soffs .. soffs + Page::SIZE], false);
-                }
-
-                va     = va + Page::SIZE;
-                soffs += Page::SIZE;
-            }
-
-            // Load the page with both initialized and uninitialized segments
-
-            if va < file_end {
-                if let Some(mut page) = memory.alloc_page(va, mode)? {
-                    page.write(0, &src[soffs .. soffs + file_end - va], true);
-                }
-
-                va = va + Page::SIZE;
-            }
-
-            // Load the pages with uninitialized segments
-
-            while va < memory_end {
-                if let Some(mut page) = memory.alloc_page(va, mode)? {
-                    page.fill(0);
-                }
-
-                va = va + Page::SIZE;
-            }
-
+	if kind == Loadable::Loader {
+            for phdr in elf.program_header_iter() {
+		if phdr.ph_type() != ProgramType::LOAD {
+                    continue;
+		}
+		let start       = phdr.vaddr() as uintptr;
+		let src: &[u8]  = phdr.content();
+		loaded = self.copy_file(src, start, mode, memory)?;
+	    }
+	} else {
+            let start       = start_addr;
+	    loaded = self.copy_file(&bytes, start, mode, memory)?;
         }
-
-        Ok(start_addr)
+        Ok((start_addr, loaded))
     }
+
+    fn copy_file(&self,
+		 src: &[u8],
+		 mut va: usize,
+		 mode: PageMode,
+		 memory: &mut Memory)
+		 -> Result<usize, Error> {
+	if !is_aligned(va, Page::SIZE) {
+	    return Err(Error::InternalError)
+	}
+	let file_end = va + src.len();
+	let memory_end = ceil(file_end, Page::SIZE) * Page::SIZE;
+	let mut soffs = 0;
+
+	// Copy bytes from the source and allocate memory pages
+	while va + Page::SIZE <= file_end {
+            if let Some(mut page) = memory.alloc_page(va, mode)? {
+                page.write(0, &src[soffs .. soffs + Page::SIZE], false);
+            }
+            va    += Page::SIZE;
+            soffs += Page::SIZE;
+        }
+        // Handle the last page and fill the rest of the page with zeros
+	if va < file_end {
+            if let Some(mut page) = memory.alloc_page(va, mode)? {
+		page.write(0, &src[soffs .. soffs + file_end - va], true);
+            }
+            va += Page::SIZE;
+	}
+	// Check that the last memory address is matching
+	if va != memory_end {
+	    return Err(Error::InternalError);
+	}
+        Ok(va)
+    }
+
 }
