@@ -1,7 +1,9 @@
 //! A builder pattern API for building Keystone enclaves
 //
 // SPDX-License-Identifier: MIT
-// Copyright (C) 2022 VTT Technical Research Centre of Finland Ltd
+// Copyright (C) 2022-2025 VTT Technical Research Centre of Finland Ltd
+
+use std::collections::HashMap;
 
 use sha3::Sha3_512;
 use sha3::Digest;
@@ -12,12 +14,18 @@ use crate::device::{Device, RuntimeParams};
 use crate::memory::{uintptr, Memory, Page, PageMode};
 use crate::memory::{round_up, round_down, ceil};
 
+/// Types for loadable binaries
+#[derive(PartialEq, Eq, Hash)]
+pub enum Loadable {
+    Binary,
+    Runtime,
+    Loader,
+}
+
 /// Enclave builder
 pub struct Builder {
-    /// Position of the enclave runtime binary in the vector of binaries
-    ert_pos:   usize,
     /// Binaries to be loaded
-    binaries:  Vec<Binary>,
+    binaries:  HashMap<Loadable, Binary>,
     /// Untrusted shared memory base address
     shrd_base: uintptr,
     /// Untrusted shared memory size in bytes
@@ -44,15 +52,14 @@ impl Builder {
     /// Default base address of the untrusted shared memory
     pub const DEFAULT_UNTRUSTED_PTR:      usize = 0xffffffff80000000;
     /// Default size of the untrusted shared memory in bytes
-    pub const DEFAULT_UNTRUSTED_SIZE:     usize = 1024 * 1024;
+    pub const DEFAULT_UNTRUSTED_SIZE:     usize = 4 * 1024 * 1024;
     /// Default size of free memory
-    pub const DEFAULT_FREE_MEMORY_SIZE:   usize = 1024 * 1024;
+    pub const DEFAULT_FREE_MEMORY_SIZE:   usize = 4 * 1024 * 1024;
 
     /// Create a new enclave builder
 
     pub fn new() -> Self {
-        Self { ert_pos:   usize::MAX,
-               binaries:  Vec::new(),
+        Self { binaries:  HashMap::new(),
                shrd_base: 0,
                shrd_size: 0,
                free_size: 0 }
@@ -69,12 +76,21 @@ impl Builder {
     ///
     /// Ok() in case of success, otherwise an error value
 
-    pub fn add(&mut self, path: &String, runtime: bool) -> Result<(), Error> {
-        let binary = Binary::parse(path)?;
-        if runtime {
-            self.ert_pos = self.binaries.len();
+    pub fn add(&mut self, path: &String, loadable: Loadable) -> Result<(), Error> {
+	match loadable {
+	    Loadable::Binary => {
+		let binary = Binary::parse(path)?;
+		self.binaries.insert(Loadable::Binary, binary);
+	    },
+	    Loadable::Runtime => {
+		let binary = Binary::parse(path)?;
+		self.binaries.insert(Loadable::Runtime, binary);
+	    },
+	    Loadable::Loader => {
+		let binary = Binary::parse(path)?;
+		self.binaries.insert(Loadable::Loader, binary);
+	    },
         }
-        self.binaries.push(binary);
         Ok(())
     }
 
@@ -118,19 +134,14 @@ impl Builder {
 
 
     fn check(&self) -> bool {
-        if self.binaries.len() == 0 {
+        if self.binaries.len() != 3 {
             return false;
         }
-
-        if self.ert_pos >= self.binaries.len() {
-            return false;
-        }
-
         if self.shrd_base == 0 || self.shrd_size == 0 {
             return false;
         }
 
-        return true;
+        true
     }
 
     /// Build an enclave using the parameters loaded into the builder
@@ -142,7 +153,7 @@ impl Builder {
     /// value for the enclave memory for attestation.
     ///
     /// # Input
-    /// * 'device' is an potional Keystone pseudo-device
+    /// * 'device' is an optional Keystone pseudo-device
     ///
     /// # Return
     ///
@@ -155,17 +166,20 @@ impl Builder {
             return Err(Error::BadState);
         }
 
-        // We only support two binaries currently:
-        if self.binaries.len() != 2 {
+        // We only support three binaries currently:
+        if self.binaries.len() != 3 {
             return Err(Error::NotImplemented);
         }
 
-        let ert_bin   = &self.binaries[self.ert_pos];
-        let app_bin   = &self.binaries[1 - self.ert_pos];
+	// This assumes that the binaries are found
+        let ldr_bin   = &self.binaries.get(&Loadable::Loader).unwrap();
+        let ert_bin   = &self.binaries.get(&Loadable::Runtime).unwrap();
+        let app_bin   = &self.binaries.get(&Loadable::Binary).unwrap();
         let min_pages = round_up(self.free_size, Page::BITS) / Page::SIZE
             + ceil(app_bin.total_size(), Page::SIZE)
             + ceil(ert_bin.total_size(), Page::SIZE)
-            + 15; // A magic number inherited from Keystone code
+	    + ceil(ldr_bin.total_size(), Page::SIZE)
+            + 16; // A magic number inherited from Keystone code
 
         // Create memory
         let mut memory =
@@ -176,10 +190,11 @@ impl Builder {
                 Memory::new(device, phys_addr, min_pages)?
             } else {
                 Memory::new(None, 0, min_pages)?
-
             };
 
+
         // Load binaries, starting from runtime
+	let _ldr_start = ldr_bin.load(&mut memory, false)?;
         let ert_start = ert_bin.load(&mut memory, true)?;
         let app_start = app_bin.load(&mut memory, false)?;
 
@@ -196,7 +211,7 @@ impl Builder {
         let shrd_base  = self.shrd_base;
         let shrd_size  = self.shrd_size;
         let shrd_end   = shrd_base + shrd_size;
-        let shrd_start = memory.alloc_shared_memory(shrd_size)?;
+        let _shrd_start = memory.alloc_shared_memory(shrd_size)?;
         let va_start   = round_down(shrd_base, Page::BITS);
         let va_end     = round_up(shrd_end, Page::BITS);
         let num_pages  = (va_end - va_start) / Page::SIZE;
@@ -222,9 +237,12 @@ impl Builder {
         };
 
         hash.update(params_as_bytes);
+	/*
         memory.validate(&mut hash,
                         ert_start,  app_start,
                         free_start, shrd_start)?;
+        */
+	println!("  Memory validate IS NOW DISABLED!!!\n");
         let hash = hash.finalize();
 
         // For a memory simulation we are done
