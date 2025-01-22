@@ -1,7 +1,7 @@
 //! Keystone pseudo-device API
 //
 // SPDX-License-Identifier: MIT
-// Copyright (C) 2022 VTT Technical Research Centre of Finland Ltd
+// Copyright (C) 2022-2025 VTT Technical Research Centre of Finland Ltd
 
 use nix::sys::mman::{mmap, ProtFlags, MapFlags};
 
@@ -63,19 +63,21 @@ impl RuntimeParams {
 #[repr(C)]
 pub struct IoctlCreateEnclave { // This is pub only because of ioctl_*
     eid:        uintptr,
-    min_pages:  uintptr,
-    rt_vaddr:   uintptr,
-    user_vaddr: uintptr, // Not used
-    pt_ptr:     uintptr, // Not used
-    shrd_free:  uintptr, // Not used
-    priv_paddr: uintptr, // Not used
-    shrd_paddr: uintptr, // Not used
-    rt_paddr:   uintptr,
+
+    // host -> driver - create
+    min_pages:  uintptr, // create
+    shrd_size:  uintptr, // (was utm_size) Not used?
+
+    // host -> driver - finalize
+    rt_paddr:   uintptr, // (was runtime_paddr)
     user_paddr: uintptr,
-    priv_free:  uintptr,
-    priv_size:  uintptr, // Not used
-    shrd_size:  uintptr, // Not used
-    params:     RuntimeParams
+    priv_free:  uintptr, // (was free_paddr)
+    free_req:   uintptr, // ???
+
+    // driver -> host
+    priv_paddr: uintptr, // (was epm_paddr) Not used
+    priv_size:  uintptr, // (was epm_size) Not used
+    shrd_paddr: uintptr, // (was utm_paddr) Not used
 }
 
 /// Parameters for Keystone driver operation to run an enclave
@@ -87,7 +89,7 @@ pub struct IoctlCreateEnclave { // This is pub only because of ioctl_*
 pub struct IoctlRunEnclave { // This is pub only because of ioctl_*
     eid:   uintptr,
     error: uintptr,
-    value: uintptr
+    value: uintptr,
 }
 
 ioctl_read!(     ioctl_create,   KEYSTONE_IOC_MAGIC, 0x00, IoctlCreateEnclave);
@@ -141,7 +143,7 @@ impl Device {
         }
 
         self.eid.replace(data.eid);
-        return Ok(data.pt_ptr);
+        return Ok(data.priv_paddr);
     }
 
     /// Set encalve shared memory size
@@ -152,10 +154,7 @@ impl Device {
         }
 
         let mut data = IoctlCreateEnclave { eid:    *self.eid.borrow(),
-                                            params: RuntimeParams {
-                                                shrd_size: size,
-                                                .. Default::default()
-                                            },
+                                            shrd_size: size,
                                             .. Default::default() };
 
         let fd = self.device_file.as_ref().unwrap().as_raw_fd();
@@ -163,7 +162,7 @@ impl Device {
             return Err(Error::Device);
         }
 
-        return Ok(data.shrd_free);
+        return Ok(data.shrd_paddr);
     }
 
     /// Finalize enclave initialization and instantiate the enclave
@@ -171,7 +170,7 @@ impl Device {
                             rt_paddr:   uintptr,
                             user_paddr: uintptr,
                             free_paddr: uintptr,
-                            params:     &RuntimeParams)
+                            _params:    &RuntimeParams)
                             -> Result<(), Error> {
 
         if self.device_file.is_none() {
@@ -182,7 +181,7 @@ impl Device {
                                             rt_paddr:   rt_paddr,
                                             user_paddr: user_paddr,
                                             priv_free:  free_paddr,
-                                            params:     *params,
+					    free_req:   0x100000, // TBD: what is this?
                                             .. Default::default() };
 
         let fd     = self.device_file.as_ref().unwrap().as_raw_fd();
