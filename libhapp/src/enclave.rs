@@ -173,7 +173,7 @@ impl <'a>Enclave<'a> {
                 Error::Pending => {
                     // Dispatch edge calls
                     let mut edge_call = unsafe {
-                        &mut* std::ptr::from_exposed_addr_mut::<EdgeCall>(self.shrd_base)
+                        &mut* std::ptr::with_exposed_provenance_mut::<EdgeCall>(self.shrd_base)
                     };
 
                     self.dispatcher.dispatch_ocall(&mut edge_call,
@@ -197,7 +197,7 @@ impl <'a>Enclave<'a> {
                     Error::Pending => {
                         // Dispatch edge calls
                         let mut edge_call = unsafe {
-                            &mut* std::ptr::from_exposed_addr_mut::<EdgeCall>(self.shrd_base)
+                            &mut* std::ptr::with_exposed_provenance_mut::<EdgeCall>(self.shrd_base)
                         };
 
                         self.dispatcher.dispatch_ocall(&mut edge_call,

@@ -278,7 +278,7 @@ impl Device {
                      MapFlags::MAP_SHARED,
                      self.device_file.as_ref().unwrap().as_raw_fd(),
                      addr as off_t) } {
-                return Ok(ptr.expose_addr());
+                return Ok(ptr.expose_provenance());
         }
 
         return Err(Error::Device);

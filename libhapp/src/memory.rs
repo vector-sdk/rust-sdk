@@ -113,7 +113,7 @@ impl MemoryArea {
     }
 
     fn base_addr(&self) -> uintptr {
-        self.base.expose_addr()
+        self.base.expose_provenance()
     }
 
     #[allow(dead_code)]
@@ -123,7 +123,7 @@ impl MemoryArea {
 
     fn top(&self) -> uintptr {
         unsafe {
-	    self.base.add(self.base_offset + self.free_offset).expose_addr()
+	    self.base.add(self.base_offset + self.free_offset).expose_provenance()
 	}
     }
 
@@ -151,7 +151,7 @@ impl <'a>Page<'a>  {
 
     fn wrap(vaddr: uintptr) -> Self {
         let content = unsafe {
-            let ptr = std::ptr::from_exposed_addr_mut::<u8>(vaddr);
+            let ptr = std::ptr::with_exposed_provenance_mut::<u8>(vaddr);
             std::slice::from_raw_parts_mut(ptr, Page::SIZE)
         };
 
@@ -159,7 +159,7 @@ impl <'a>Page<'a>  {
     }
 
     fn base_addr(&self) -> uintptr {
-        self.content.as_ptr().expose_addr()
+        self.content.as_ptr().expose_provenance()
     }
 
     pub(crate) fn write(&mut self,
@@ -214,7 +214,7 @@ impl <'a>Memory<'a> {
 
         let pm_size = min_pages * Page::SIZE;
         return if let Some(ref _dev) = device {
-            let base = std::ptr::from_exposed_addr_mut::<u8>(phys_addr);
+            let base = std::ptr::with_exposed_provenance_mut::<u8>(phys_addr);
             Ok(Self {device:   device,
                      mappings: Some(HashMap::new()),
                      priv_mem: MemoryArea::new(base, pm_size),
@@ -257,7 +257,7 @@ impl <'a>Memory<'a> {
         if let Some(ref device) = self.device {
             let addr = device.init_shared_memory(size)?;
             self.shrd_mem.size = size;
-            self.shrd_mem.base = std::ptr::from_exposed_addr_mut::<u8>(addr);
+            self.shrd_mem.base = std::ptr::with_exposed_provenance_mut::<u8>(addr);
             self.shrd_mem.base_offset = 0;
             self.shrd_mem.free_offset = 0;
             return Ok(addr);
