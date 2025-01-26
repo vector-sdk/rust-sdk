@@ -264,7 +264,7 @@ fn read_le_u64(slice: &[u8]) -> u64 {
 impl Evidence {
 
     /// Get enclave part of the report
-    pub fn enclave<'a>(&'a self) -> EnclaveReport {
+    pub fn enclave<'a>(&'a self) -> EnclaveReport<'a> {
         return EnclaveReport(&self.raw[self.eoffs .. self.soffs]);
     }
 
