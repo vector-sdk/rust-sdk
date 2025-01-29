@@ -18,7 +18,7 @@ TARGET_ARCH := riscv64gc-unknown-linux-gnu
 x86_64: TARGET_ARCH := x86_64-unknown-linux-gnu
 
 # Common build options. Always build for release to minimize binary size!
-CARGO_FLAGS       := -v --release
+CARGO_FLAGS       := --release
 CARGO_DEBUG_FLAGS := --features debug_memory
 
 dir2tgt = $(patsubst %, ./%/$(strip $(2)),$(strip $(1)))
